@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RC Attendance Scanner | World Vision Cambodia</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<style>
+  :root {
+    --brown: #5B3A21;
+    --orange: #D8762B;
+    --cream: #FAF4EB;
+    --grey: #5A5A5A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Khmer OS', 'Noto Sans Khmer', Arial, sans-serif;
+    background: var(--cream);
+    color: #222;
+  }
+  header {
+    background: var(--brown);
+    color: white;
+    padding: 18px 16px;
+    text-align: center;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; font-size: 13px; color: #f0d9c2; }
+  .container {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+  .card {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--grey);
+    margin-bottom: 4px;
+    font-weight: bold;
+  }
+  input[type=text] {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 15px;
+  }
+  select {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 15px;
+    background: white;
+    font-family: inherit;
+  }
+  button {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .btn-primary { background: var(--orange); color: white; }
+  .btn-secondary { background: #eee; color: #333; }
+  .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+  #reader { width: 100%; border-radius: 8px; overflow: hidden; }
+  #status {
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 8px;
+    font-size: 14px;
+    display: none;
+  }
+  #status.success { background: #e6f4ea; color: #1e7d34; display: block; }
+  #status.error { background: #fdecea; color: #b3261e; display: block; }
+  #status.info { background: #e8eef7; color: #1a4b8c; display: block; }
+  #status.warn { background: #fff4e0; color: #8a5a00; display: block; }
+  .log-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .log-item:last-child { border-bottom: none; }
+  .log-item .code { font-weight: bold; color: var(--brown); }
+  .log-item .time { color: #999; }
+  .hidden { display: none; }
+  .config-note {
+    font-size: 12px;
+    color: #999;
+    text-align: center;
+    margin-top: 8px;
+  }
+  .config-note.ok { color: #1e7d34; }
+  .config-note.warn { color: #b3261e; }
+  .pending-pill {
+    display: inline-block;
+    background: #fff4e0;
+    color: #8a5a00;
+    font-size: 11.5px;
+    font-weight: bold;
+    padding: 3px 9px;
+    border-radius: 20px;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>អង្គការទស្សនៈពិភពលោកកម្ពុជា</h1>
+  <p>RC Attendance QR Scanner — Mongkol Borei 2</p>
+</header>
+
+<div class="container">
+
+  <div class="card" id="setupCard">
+    <label>ប្រធានបទ / Topic</label>
+    <select id="activityTopicSelect">
+      <option value="">-- ជ្រើសរើសប្រធានបទ / Select a topic --</option>
+      <option value="បណ្ដុះបណ្ដាលអនាម័យ">បណ្ដុះបណ្ដាលអនាម័យ · Hygiene Training</option>
+      <option value="បណ្ដុះបណ្ដាលសិទ្ធិកុមារ">បណ្ដុះបណ្ដាលសិទ្ធិកុមារ · Child Rights Training</option>
+      <option value="បណ្ដុះបណ្ដាលអប់រំសុខភាព">បណ្ដុះបណ្ដាលអប់រំសុខភាព · Health Education Training</option>
+      <option value="បណ្ដុះបណ្ដាលអាហារ/សរសៃ">បណ្ដុះបណ្ដាលអាហារ/សរសៃ · Nutrition Training</option>
+      <option value="ក្លឹបកុមារ">ក្លឹបកុមារ · Kids Club</option>
+      <option value="បណ្ដុះបណ្ដាលគ្រប់គ្រងហានិភ័យគ្រោះមហន្តរាយ">បណ្ដុះបណ្ដាលគ្រប់គ្រងហានិភ័យគ្រោះមហន្តរាយ · Disaster Risk Management Training</option>
+      <option value="ថ្ងៃកំណើត">ថ្ងៃកំណើត · Birthdays</option>
+      <option value="__other__">ផ្សេងៗ · Other (type manually)</option>
+    </select>
+    <input type="text" id="activityTopicOther" class="hidden" placeholder="សូមបញ្ចូលប្រធានបទ / Type the topic name">
+    <input type="hidden" id="activityName">
+
+    <label>ស្កេនដោយ / Scanned by</label>
+    <input type="text" id="officerName" list="officerNamesList" autocomplete="off" placeholder="វាយបញ្ចូល ឬជ្រើសរើសឈ្មោះ / Type or pick a name">
+    <datalist id="officerNamesList"></datalist>
+
+    <button class="btn-primary" id="startBtn">📷 ចាប់ផ្តើមស្កេន / Start Scanning</button>
+    <div id="pendingNote" class="hidden" style="text-align:center;"></div>
+  </div>
+
+  <div class="card hidden" id="scanCard">
+    <div id="reader"></div>
+    <button class="btn-secondary" id="stopBtn" style="margin-top:12px;">⏹ Stop Scanning</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="card hidden" id="manualCard">
+    <label>បញ្ចូលកូដដោយដៃ / Manual Code Entry (if QR won't scan)</label>
+    <input type="text" id="manualCode" placeholder="CAM-199774-0005">
+    <button class="btn-secondary" id="manualSubmit">Submit Code</button>
+  </div>
+
+  <div class="card hidden" id="logCard">
+    <label style="margin-bottom:8px;">Recent Scans (this session)</label>
+    <div id="logList"></div>
+  </div>
+
+  <div class="config-note" id="configNote">connecting…</div>
+  <div class="config-note" style="margin-top:2px;">Build 2026-07-21-v2 · projectId: mbr2-dashboard</div>
+</div>
+
+<script>
+/* =========================================================================
+   FIREBASE — same project as the MBR2 Sponsorship Dashboard (index.html) and
+   the CVC App. Scans written here (to the "attendance" collection) show up
+   automatically in the dashboard's "QR Attendance" tab — no export/import,
+   no separate backend to configure. Keep this config identical to the one
+   in index.html so both apps read/write the same database.
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBtHvbtxFFkaN09MqSN2CGwiKobzuQJS_M",
+  authDomain: "mbr2-dashboard.firebaseapp.com",
+  projectId: "mbr2-dashboard",
+  storageBucket: "mbr2-dashboard.firebasestorage.app",
+  messagingSenderId: "122727869591",
+  appId: "1:122727869591:web:76a9f92a2740b40a920dd2"
+};
+const _fbReady = firebaseConfig.apiKey !== "YOUR_API_KEY";
+let _authPromise = null;
+let db = null;
+if(_fbReady){
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+}
+function ensureAuth(){
+  if(!_fbReady) return Promise.reject(new Error('Firebase is not configured'));
+  if(!_authPromise){
+    _authPromise = new Promise((resolve, reject) => {
+      firebase.auth().onAuthStateChanged(user => { if(user) resolve(user); });
+      firebase.auth().signInAnonymously().catch(reject);
+    });
+  }
+  return _authPromise;
+}
+
+/* ---- RC roster (read-only, best-effort) ----
+   Loaded once in the background so scans can show the child's real name right away.
+   Stored the same way the dashboard stores it: one JSON blob (possibly split into
+   several documents if it's over Firestore's ~1MB limit) at shared/sd:rc:v1. If it
+   hasn't finished loading yet (or the roster is huge / connection is slow), scanning
+   still works fine — the scan is recorded either way, just without a name shown yet.
+   The dashboard itself re-verifies every scan against the live roster when you view
+   the "QR Attendance" tab, so nothing is ever permanently "unmatched" because of this. */
+let ROSTER = null;          // { ChildID: {ChildNameKh, ChildNameEn, ...} } once loaded
+let ROSTER_LOADING = false;
+const configNoteEl = document.getElementById('configNote');
+
+async function fbGetChunked(collRef, docId){
+  const snap = await collRef.doc(docId).get();
+  if(!snap.exists) return null;
+  const data = snap.data();
+  if(!data.chunked) return data.value;
+  const chunkSnaps = await Promise.all(Array.from({ length: data.chunkCount }, (_, i) => collRef.doc(docId+'__c'+i).get()));
+  return chunkSnaps.map(s => s.exists ? s.data().value : '').join('');
+}
+
+async function loadRosterInBackground(){
+  if(ROSTER_LOADING || !_fbReady) return;
+  ROSTER_LOADING = true;
+  try{
+    await ensureAuth();
+    configNoteEl.textContent = 'ភ្ជាប់បានជោគជ័យ — កំពុងផ្ទុកបញ្ជីកុមារ… / Connected — loading roster…';
+    configNoteEl.className = 'config-note';
+    const raw = await fbGetChunked(db.collection('shared'), 'sd:rc:v1');
+    ROSTER = raw ? JSON.parse(raw) : {};
+    configNoteEl.textContent = '✓ ភ្ជាប់បានជោគជ័យ · Connected — ' + Object.keys(ROSTER).length + ' RC loaded';
+    configNoteEl.className = 'config-note ok';
+  }catch(e){
+    ROSTER = null;
+    configNoteEl.textContent = "⚠️ បានភ្ជាប់ ប៉ុន្តែផ្ទុកបញ្ជីកុមារមិនបាន — ស្កេននៅតែដំណើរការ · Connected, but couldn't load the roster — scanning still works";
+    configNoteEl.className = 'config-note warn';
+  }
+  ROSTER_LOADING = false;
+}
+
+if(_fbReady){
+  ensureAuth().then(loadRosterInBackground).catch(() => {
+    configNoteEl.textContent = '⚠️ មិនអាចភ្ជាប់បានទេ — ពិនិត្យអ៊ីនធឺណិត · Could not connect — check your internet connection';
+    configNoteEl.className = 'config-note warn';
+  });
+} else {
+  configNoteEl.textContent = '⚠️ Firebase not configured — edit firebaseConfig in this file';
+  configNoteEl.className = 'config-note warn';
+}
+
+/* ---- offline queue ----
+   If a scan can't be written immediately (no signal, which happens often in the
+   field), it's kept in localStorage and retried automatically — on the next
+   successful scan, when the browser comes back online, and every 15s while
+   scanning is active. Nothing is lost just because a village has weak signal. */
+const PENDING_KEY = 'rcAttendancePendingScans';
+function loadPending(){
+  try{ return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); }catch(e){ return []; }
+}
+function savePending(list){
+  try{ localStorage.setItem(PENDING_KEY, JSON.stringify(list)); }catch(e){}
+  updatePendingNote();
+}
+function updatePendingNote(){
+  const n = loadPending().length;
+  const note = document.getElementById('pendingNote');
+  if(n > 0){
+    note.className = '';
+    note.innerHTML = '<span class="pending-pill">⏳ ' + n + ' scan' + (n>1?'s':'') + ' waiting to sync</span>';
+  } else {
+    note.className = 'hidden';
+  }
+}
+async function flushPending(){
+  if(!_fbReady) return;
+  const list = loadPending();
+  if(!list.length) return;
+  const remaining = [];
+  for(const item of list){
+    try{
+      await ensureAuth();
+      await db.collection('attendance').add(item);
+    }catch(e){
+      remaining.push(item);
+    }
+  }
+  savePending(remaining);
+}
+window.addEventListener('online', flushPending);
+setInterval(flushPending, 15000);
+updatePendingNote();
+
+let html5QrCode;
+let lastCode = null;
+let lastTime = 0;
+const COOLDOWN_MS = 4000;
+const sessionLog = [];
+
+/* ---- CVC / staff names for the "Scanned by" field ----
+   Powers the <datalist> autocomplete on the officerName text input: as you
+   type, matching names from this list are suggested and can be tapped to
+   auto-complete the field. You can also just keep typing any name that
+   isn't on this list — it's a plain text field underneath, nothing is
+   locked to this list. Sorted using Khmer collation so suggestions read
+   naturally top-to-bottom. */
+const OFFICER_NAMES = ["កង ស្រីឃួច", "កាំង ពៅ", "ការ តុលា", "កុល សូដា", "ក្រឹម សូរិយា", "ទួន វិច្ឆិកា", "ខា ស៊ីនួន", "ខុងចាន់រី", "គាំ បូរី", "គាំឈុនអាយ", "គិម ឡៃហៀក", "គិមយូ", "ឃ្លិនសៅហួត", "ង៉ា ងួន", "ចក់់ឈួម", "ចំរើន ឡង់", "ចាន់ សុខី", "ចាន់រីន", "ចាន់ហាន", "ចិន សត្វទ្រី", "ចៅ យិន", "ឆាម ណារ៉ូន", "ឆាយ តុងឈាក", "ឆឺយ ឆឺត", "ស៊ុំ ស្រីហួង", "ជា សារុំ", "ជា សាវ៉ុង", "ជិត សារឿម", "ជួន ផល្លា", "ឈួន សុភាព", "ញិក សាវ៉ាត", "ដន ចាន់ណា", "ដួង សៃណយ", "ឌុក សេង", "ឌុច ចាន់កែវ", "ឌួង គឹមហួយ", "ណំ ស៊ីថា", "តុល ព្រឿត", "ទួត សាវៃ", "ទេព ចំរ៉ុង", "ទេពសៅនី", "ធំ បញ្ញា", "ធិញ កញ្ញា", "សេម ធិន", "នន់ ជីវិន", "នន់ សាវាង", "នាម រ៉ា", "ប៉ង់ យ៉ុម", "ប៉ិច ស្រីមុំ", "ប៊ុន យ៊ុន", "ប៊ូ ទុំ", "បួន គិមលុយ", "ប៉ោ ទី", "បោស សុភឿយ", "នាម សុរ៉េត", "ប្រាណ ប្រប", "ផ សារួន", "ពេញឡៃហ៊ាង", "ព្រីង ជឿន", "ភាន់ ស្រីមុំ", "ង៉ុក យ៉ុត", "ភុំ ចន្ទ្រា", "ភុន ភីរ៉ាក់នុត", "ភូ សៀងថៃ", "ម៉ក់និន", "ម៉ាន់ គង់", "មាន តាំងជី", "មូល ធីតា", "មូល ស្រីមុំ", "យ៉ាន់ សាវ័ន", "យឺ ចាន់រ៉ា", "យូ លៀង", "ផល ផានិត", "ទុំ គឹមហុង", "រ៉ន ស៊ីណាត", "រ៉ន ស៊ីនួន", "មាន សុខហឿន", "រួម រចនា", "ភូ ច្រឹប", "រើន ភារី", "រឿ សុខឌី", "គង់ វិឆ្ឆ័យ", "សុត ផល្លី", "រឿន មុំ", "រឿន មួយ", "រៀម ផល្លា", "រៀល ណារីន", "រ៉ែម សារាយ", "លន់ ហូល", "លាច ភារុន", "វ៉ន សឹងអូន", "វឿន រំភើប", "សំ ជិនណារី", "សំ សៀវលិញ", "ស្រេង លក្ខិណា", "អ៊ា សុភាន់", "សយកេសរ", "សល់សំណាង", "សាំង សីហា", "ស៊ាន សារ៉ាត់", "សាប់ គឹមហួន", "សាមឿត", "សាយ ប៊ុនស៊ុង", "សាយ យុយ", "សារឿន រីណា", "សុខ នឿង", "សុខ វុន", "សុខរតនា", "សុខវត្ថា", "សុខសៅរ័ត្ន", "បៅ សូនី", "សឿង គឹមហេង", "សែត សាវឿន", "សេកវ៉ុន", "សេង រដ្ឋា", "សោម សុភឿត", "សៅ វ៉ាន់ធីន", "ស្រី លីន", "ហម រតនៈ", "ហម ស្រីនីត", "ហ៊ា ចន្ថា", "ហាច ចរា", "ហួ គិមហួន", "ហួត វ៉ាន់ឈួ", "ហួត សេងហួយ", "ឡត ណាឡែន", "ឡា ដឿន", "ឡិក យូ", "ឡិន សូវៀត", "អាន់ សីហា", "អិន ថូវ", "អ៊ីង លាង", "អ៊ីង វាសនា", "អ៊ីវ សំបូរ", "អ៊ុច ចន្ដាមុន្នី", "តឿក កក្កដា", "អុិត ឡាដា", "អោក គិមអេង", "ស៊ុន សម្បត្តិ", "អឿន សាក់សិ", "ម៉ន មីនា", "មាន សុខុន", "សោម ឡូញ", "រ៉េត រតនៈ", "ភួន គឹមយុិន", "ឡុង គឹមលីន"];
+
+(function populateOfficerDatalist(){
+  const list = document.getElementById('officerNamesList');
+  const sorted = OFFICER_NAMES.slice().sort((a, b) => a.localeCompare(b, 'km'));
+  sorted.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    list.appendChild(opt);
+  });
+})();
+
+/* ---- Topic dropdown -> hidden #activityName, with "ផ្សេងៗ Other" fallback ---- */
+function syncActivityName(){
+  const sel = document.getElementById('activityTopicSelect').value;
+  const otherInput = document.getElementById('activityTopicOther');
+  const hidden = document.getElementById('activityName');
+  if(sel === '__other__'){
+    otherInput.classList.remove('hidden');
+    hidden.value = otherInput.value.trim();
+  } else {
+    otherInput.classList.add('hidden');
+    hidden.value = sel;
+  }
+}
+document.getElementById('activityTopicSelect').addEventListener('change', syncActivityName);
+document.getElementById('activityTopicOther').addEventListener('input', syncActivityName);
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  const activity = document.getElementById('activityName').value.trim();
+  if (!activity) {
+    alert('សូមបញ្ចូលឈ្មោះកម្មវិធីជាមុន / Please enter an Activity Name first.');
+    return;
+  }
+  document.getElementById('setupCard').classList.add('hidden');
+  document.getElementById('scanCard').classList.remove('hidden');
+  document.getElementById('manualCard').classList.remove('hidden');
+  document.getElementById('logCard').classList.remove('hidden');
+  startScanner();
+  flushPending();
+});
+
+document.getElementById('stopBtn').addEventListener('click', () => {
+  stopScanner();
+  document.getElementById('setupCard').classList.remove('hidden');
+  document.getElementById('scanCard').classList.add('hidden');
+});
+
+document.getElementById('manualSubmit').addEventListener('click', () => {
+  const code = document.getElementById('manualCode').value.trim();
+  if (code) {
+    submitAttendance(code);
+    document.getElementById('manualCode').value = '';
+  }
+});
+
+function startScanner() {
+  html5QrCode = new Html5Qrcode("reader");
+  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+  html5QrCode.start(
+    { facingMode: "environment" },
+    config,
+    (decodedText) => onScanSuccess(decodedText),
+    (errorMessage) => { /* ignore per-frame scan errors */ }
+  ).catch((err) => {
+    showStatus('error', 'Camera error: ' + err);
+  });
+}
+
+function stopScanner() {
+  if (html5QrCode) {
+    html5QrCode.stop().catch(() => {});
+  }
+}
+
+function onScanSuccess(code) {
+  const now = Date.now();
+  if (code === lastCode && (now - lastTime) < COOLDOWN_MS) {
+    return; // debounce duplicate rapid scans
+  }
+  lastCode = code;
+  lastTime = now;
+  submitAttendance(code);
+}
+
+async function submitAttendance(code) {
+  const activity = document.getElementById('activityName').value.trim();
+  const officer = document.getElementById('officerName').value.trim();
+
+  if (!_fbReady) {
+    showStatus('error', 'Backend not configured. Edit firebaseConfig in this file first.');
+    return;
+  }
+
+  const rc = ROSTER ? ROSTER[code] : null;
+  const verified = !!rc;
+  const name = rc ? (rc.ChildNameKh || rc.ChildNameEn || '') : '';
+
+  showStatus('info', 'ដំណើរការ... / Recording ' + code + '...');
+
+  const record = {
+    code: code,
+    activity: activity,
+    officer: officer,
+    verified: verified,
+    name: name || null,
+    ts: Date.now()
+  };
+
+  try {
+    await ensureAuth();
+    await db.collection('attendance').add(record);
+    const label = verified ? (name || code) : code + ' (not found in roster)';
+    showStatus(verified ? 'success' : 'warn', (verified ? '✓ ' : '⚠️ ') + label + ' — recorded');
+    addLogEntry(code, verified, name, false);
+    flushPending();
+  } catch (err) {
+    // No signal right now — queue it locally and try again automatically.
+    const pending = loadPending();
+    pending.push(record);
+    savePending(pending);
+    showStatus('warn', '⏳ ' + code + ' — saved offline, will sync automatically');
+    addLogEntry(code, verified, name, true);
+  }
+}
+
+function addLogEntry(code, verified, name, queued) {
+  const time = new Date().toLocaleTimeString();
+  sessionLog.unshift({ code: code, name: name, time: time, verified: verified, queued: queued });
+  const list = document.getElementById('logList');
+  list.innerHTML = sessionLog.slice(0, 20).map(item =>
+    '<div class="log-item"><span class="code">' + item.code + (item.verified ? '' : ' ⚠️') + (item.queued ? ' ⏳' : '') + (item.name ? ' — ' + item.name : '') + '</span><span class="time">' + item.time + '</span></div>'
+  ).join('');
+}
+
+function showStatus(type, message) {
+  const el = document.getElementById('status');
+  el.className = type;
+  el.textContent = message;
+}
+</script>
+
+</body>
+</html>
